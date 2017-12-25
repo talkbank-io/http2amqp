@@ -29,8 +29,8 @@ var mutex = &sync.Mutex{}
 
 func init() {
     flag.StringVar(&uri, "uri", "amqp://guest:guest@localhost:5672/TEST", "The address for the amqp server (including vhost)")
-    flag.StringVar(&httpPort, "httpPort", "8080", "The listen port for the https GET requests")
-    flag.StringVar(&logFilePath, "logFilePath", "./http2amqp.log", "Set path to get log information");
+    flag.StringVar(&httpPort, "httpPort", "8090", "The listen port for the https GET requests")
+    flag.StringVar(&logFilePath, "logFilePath", "/var/log/http2amqp/http2amqp.log", "Set path to get log information");
     flag.StringVar(&configFile, "configFile", "./config.json", "Get config file with arguments")
 }
 
