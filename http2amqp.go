@@ -94,7 +94,7 @@ func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) 
 	case <-time.After(time.Second):
 		result = "NETWORK_SEND_TIMEOUT|503"
 		log.Printf("webReply function will be run as defer: %s\n", result)
-		defer webReply(result, w)
+		//webReply(result, w)
 		return
 	}
 	select {
@@ -103,7 +103,7 @@ func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) 
 		result = "NETWORK_REC_TIMEOUT|504"
 	}
 	log.Printf("webReply function will be run as defer: %s\n", result)
-	defer webReply(result, w)
+	//defer webReply(result, w)
 }
 func webReply(result string, w http.ResponseWriter) {
 	var statusMessage string
