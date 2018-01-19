@@ -82,7 +82,7 @@ func main() {
 	myWriter.Flush()
 	lines := writeRabbit(uri, myWriter) //read device requests rabbitmq o
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		defer staticHandler(w, r, lines)
+		go staticHandler(w, r, lines)
 	})
 	http.ListenAndServe(":" + httpPort, nil) //address= ":8080"
 }
