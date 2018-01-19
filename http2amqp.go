@@ -82,7 +82,7 @@ func main() {
 	myWriter.Flush()
 	lines := writeRabbit(uri, myWriter) //read device requests rabbitmq o
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		go staticHandler(w, r, lines)
+		defer staticHandler(w, r, lines)
 	})
 	http.ListenAndServe(":" + httpPort, nil) //address= ":8080"
 }
@@ -93,7 +93,7 @@ func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) 
 	case lines <- parseRequest(req):
 	case <-time.After(time.Second):
 		result = "NETWORK_SEND_TIMEOUT|503"
-		defer webReply(result, w)
+		webReply(result, w)
 		return
 	}
 	select {
@@ -101,7 +101,7 @@ func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) 
 	case <-time.After(time.Second):
 		result = "NETWORK_REC_TIMEOUT|504"
 	}
-	defer webReply(result, w)
+	webReply(result, w)
 }
 func webReply(result string, w http.ResponseWriter) {
 	var statusMessage string
