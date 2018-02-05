@@ -54,6 +54,8 @@ func parseConfig(uri *string, httpPort *string, logFilePath *string) {
 }
 
 func main() {
+	flag.Parse()
+	fmt.Print(configFile)
 	_, error := os.OpenFile(configFile, os.O_RDWR, 0666)
 	if error != nil {
 		// File not exists and must be create
@@ -66,9 +68,9 @@ func main() {
 		defer config.Close()
 
 	}
-
 	parseConfig(&uri, &httpPort, &logFilePath)
-	//flag.Parse()
+	fmt.Printf("\nParsed params:\n uri=%s\n httpPort=%s\n logFilePath=%s\n", uri, httpPort, logFilePath)
+	os.Exit(1)
 
 	logFile, err := os.OpenFile(logFilePath, os.O_RDWR | os.O_APPEND | os.O_CREATE, 0666)
 	if err != nil {
