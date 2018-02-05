@@ -70,7 +70,6 @@ func main() {
 	}
 	parseConfig(&uri, &httpPort, &logFilePath)
 	fmt.Printf("\nParsed params:\n uri=%s\n httpPort=%s\n logFilePath=%s\n", uri, httpPort, logFilePath)
-	os.Exit(1)
 
 	logFile, err := os.OpenFile(logFilePath, os.O_RDWR | os.O_APPEND | os.O_CREATE, 0666)
 	if err != nil {
