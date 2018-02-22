@@ -163,6 +163,7 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 				startTime := time.Now()
 
 				urlPath := strings.SplitN(line, "/", 2) //split into 2 parts- queueName and Message
+				log.Printf("URLpath=%s, line=%s\n ", urlPath, line)
 				if len(urlPath) < 2 {
 					fmt.Fprintf(myWriter, "%v %d %d Skip this message b/c it is missing a QUEUE name on the URL or a message body. count=%d line=%v\n", time.Now(), connectionAttempts, i, len(urlPath), line)
 					log.Printf("%v %d %d Skip this message b/c it is missing a QUEUE name on the URL or a message body. count=%d line=%v\n", time.Now(), connectionAttempts, i, len(urlPath), line)
