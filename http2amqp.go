@@ -124,6 +124,7 @@ func parseRequest(req *http.Request) string {
 	urlPath := req.URL.Path[len("/"):] //take everything after the http://localhost:8080/ (it gets the queue name)
 	bodyBytes, _ := ioutil.ReadAll(req.Body)
 	body := string(bodyBytes[:])
+	log.Printf("Url path=%s, body=%s\n ", urlPath, body)
 	return urlPath + "/" + body //write to rabbitMQ
 }
 
