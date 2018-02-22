@@ -121,10 +121,10 @@ func webReply(result string, w http.ResponseWriter) {
 	log.Printf(statusMessage, w)
 }
 func parseRequest(req *http.Request) string {
-	urlPath := req.URL.Path[len("/"):] //take everything after the http://localhost:8080/ (it gets the queue name)
+	urlPath := req.URL.Path[strings.LastIndex(req.URL.Path, "/") + 1:] //take everything after the http://localhost:8080/ (it gets the queue name)
 	bodyBytes, _ := ioutil.ReadAll(req.Body)
 	body := string(bodyBytes[:])
-	log.Printf("Url path=%s, body=%s\n ", urlPath, body)
+	log.Printf("Original=%s, Url path=%s, body=%s\n ", req.URL.Path, urlPath, body)
 	return urlPath + "/" + body //write to rabbitMQ
 }
 
