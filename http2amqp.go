@@ -95,7 +95,7 @@ func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) 
 	case <-time.After(time.Second):
 		result = "NETWORK_SEND_TIMEOUT|503"
 		log.Printf("webReply function will be run as defer: %s\n", result)
-		//webReply(result, w)
+		webReply(result, w)
 		return
 	}
 	select {
@@ -104,7 +104,7 @@ func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) 
 		result = "NETWORK_REC_TIMEOUT|504"
 	}
 	log.Printf("webReply function will be run as defer: %s\n", result)
-	//defer webReply(result, w)
+	webReply(result, w)
 }
 func webReply(result string, w http.ResponseWriter) {
 	var statusMessage string
@@ -214,12 +214,12 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 					break //probably the connection broke due to a network issue, so break out of this loop so it will re-connect
 				}
 
-				result = "SENT|200"
+				result = "OK|200" // message OK for VK.com
 				lines <- result
 				duration := (time.Since(startTime)).Seconds()
 				fmt.Fprintf(myWriter, "%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, queue, len(message), result, duration)
 				log.Printf("%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, queue, len(message), result, duration)
-				if result != "SENT|200" {
+				if result != "OK|200" {
 					break
 				}
 
