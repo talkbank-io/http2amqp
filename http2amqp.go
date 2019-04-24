@@ -21,6 +21,16 @@ import (
 	"log"
 )
 
+type ResponseQueue struct {
+	path        string
+	body        string
+	queryParams string
+}
+
+func responseQueueToString(queue ResponseQueue) string {
+	return fmt.Sprintf("%s/%s/%s", queue.path, queue.body, queue.queryParams)
+}
+
 var uri, httpPort, logFilePath, configFile string
 var logFile *os.File
 var queueMap = make(map[string]string)
@@ -81,17 +91,17 @@ func main() {
 	fmt.Fprintf(myWriter, "%v startup uri=%s\n", time.Now(), uri)
 	log.Printf("%v startup uri=%s\n", time.Now(), uri)
 	myWriter.Flush()
-	lines := writeRabbit(uri, myWriter) //read device requests rabbitmq o
+	queueResponses, lines := writeRabbit(uri, myWriter) //read device requests rabbitmq o
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		staticHandler(w, r, lines)
+		staticHandler(w, r, queueResponses, lines)
 	})
 	http.ListenAndServe(":"+httpPort, nil) //address= ":8080"
 }
 
-func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) {
+func staticHandler(w http.ResponseWriter, req *http.Request, responses chan ResponseQueue, lines chan string) {
 	result := ""
 	select {
-	case lines <- parseRequest(req):
+	case responses <- parseRequest(req):
 	case <-time.After(time.Second):
 		result = "NETWORK_SEND_TIMEOUT|503"
 		log.Printf("webReply function will be run as defer: %s\n", result)
@@ -120,17 +130,19 @@ func webReply(result string, w http.ResponseWriter) {
 	fmt.Fprintf(w, statusMessage)
 	log.Printf(statusMessage, w)
 }
-func parseRequest(req *http.Request) string {
+func parseRequest(req *http.Request) ResponseQueue {
 	urlPath := req.URL.Path[strings.LastIndex(req.URL.Path, "/")+1:] //take everything after the http://localhost:8080/ (it gets the queue name)
 	bodyBytes, _ := ioutil.ReadAll(req.Body)
 	queryParams := req.URL.RawQuery
 	body := string(bodyBytes[:])
 	log.Printf("Original=%s, Url path=%s, body=%s\n ", req.URL.Path, urlPath, body)
-	return urlPath + "/" + body + "/" + queryParams //write to rabbitMQ
+	return ResponseQueue{urlPath, body, queryParams}
 }
 
-func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
+func writeRabbit(amqpURI string, myWriter *bufio.Writer) (chan ResponseQueue, chan string) {
+	responseQueues := make(chan ResponseQueue)
 	lines := make(chan string)
+
 	go func() {
 		connectionAttempts := 0
 		for {
@@ -159,48 +171,46 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 			result := ""
 			for {
 				i++
-				line := <-lines
+				responseQueue := <-responseQueues
 
 				startTime := time.Now()
 
-				urlPath := strings.SplitN(line, "/", 3) //split into 2 parts- queueName and Message
-				log.Printf("URLpath=%s, line=%s\n ", urlPath, line)
-				if len(urlPath) < 2 {
-					fmt.Fprintf(myWriter, "%v %d %d Skip this message b/c it is missing a QUEUE name on the URL or a message body. count=%d line=%v\n", time.Now(), connectionAttempts, i, len(urlPath), line)
-					log.Printf("%v %d %d Skip this message b/c it is missing a QUEUE name on the URL or a message body. count=%d line=%v\n", time.Now(), connectionAttempts, i, len(urlPath), line)
+				log.Printf("URLpath=%s, line=%s\n ", responseQueue.path, responseQueueToString(responseQueue))
+				if len(responseQueue.path) < 2 {
+					fmt.Fprintf(myWriter, "%v %d %d Skip this message b/c it is missing a QUEUE name on the URL or a message body. count=%d line=%v\n", time.Now(), connectionAttempts, i, len(responseQueue.path), responseQueueToString(responseQueue))
+					log.Printf("%v %d %d Skip this message b/c it is missing a QUEUE name on the URL or a message body. count=%d line=%v\n", time.Now(), connectionAttempts, i, len(responseQueue.path), responseQueueToString(responseQueue))
 					myWriter.Flush()
 					lines <- "skip"
 					continue
 				}
-				queue, message, querystring := urlPath[0], urlPath[1], urlPath[2]
 
-				if queueMap[queue] == "" {
+				if queueMap[responseQueue.path] == "" {
 					//if we have never seen this queue name work before
-					_, err := channel.QueueInspect(queue)
+					_, err := channel.QueueInspect(responseQueue.path)
 					if err == nil {
 						mutex.Lock()
-						queueMap[queue] = "1" //save the successful lookup of the queue name
+						queueMap[responseQueue.path] = "1" //save the successful lookup of the queue name
 						mutex.Unlock()
 					} else {
 						result = "BAD_QUEUE_NAME|400"
 						lines <- result
-						fmt.Fprintf(myWriter, "%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, queue, len(message), result, 1.0)
-						log.Printf("%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, queue, len(message), result, 1.0)
+						fmt.Fprintf(myWriter, "%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, responseQueue.path, len(responseQueue.body), result, 1.0)
+						log.Printf("%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, responseQueue.body, len(responseQueue.body), result, 1.0)
 						break
 					}
 
 				}
 
 				err3 := channel.Publish(
-					"",    //exchange
-					queue, //routingKey, for some reason we need to put the queue name here
-					false, //mandatory - don't quietly drop messages in case of missing Queue
-					false, //immediate
+					"",                 //exchange
+					responseQueue.path, //routingKey, for some reason we need to put the queue name here
+					false,              //mandatory - don't quietly drop messages in case of missing Queue
+					false,              //immediate
 					amqp.Publishing{
-						Headers:         amqp.Table{"query_string": querystring},
+						Headers:         amqp.Table{"query_string": responseQueue.queryParams},
 						ContentType:     "text/plain",
 						ContentEncoding: "UTF-8",
-						Body:            []byte(message),
+						Body:            []byte(responseQueue.body),
 						DeliveryMode:    amqp.Persistent, // 1=non-persistent(Transient), 2=persistent
 						Priority:        9,
 					},
@@ -218,8 +228,8 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 				result = "OK|200" // message OK for VK.com
 				lines <- result
 				duration := (time.Since(startTime)).Seconds()
-				fmt.Fprintf(myWriter, "%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, queue, len(message), result, duration)
-				log.Printf("%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, queue, len(message), result, duration)
+				fmt.Fprintf(myWriter, "%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, responseQueue.path, len(responseQueue.body), result, duration)
+				log.Printf("%v %d %d %s/%db %s %.6f\n", time.Now(), connectionAttempts, i, responseQueue.path, len(responseQueue.body), result, duration)
 				if result != "OK|200" {
 					break
 				}
@@ -229,5 +239,6 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 
 		}
 	}()
-	return lines
+
+	return responseQueues, lines
 }
