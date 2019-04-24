@@ -6,6 +6,7 @@ package main
 // put the message in the body
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -15,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"encoding/json"
 
 	"github.com/streadway/amqp"
 	"log"
@@ -29,7 +29,7 @@ var mutex = &sync.Mutex{}
 func init() {
 	flag.StringVar(&uri, "uri", "amqp://guest:guest@localhost:5672/TEST", "The address for the amqp server (including vhost)")
 	flag.StringVar(&httpPort, "httpPort", "8090", "The listen port for the https GET requests")
-	flag.StringVar(&logFilePath, "logFilePath", "/var/log/http2amqp/http2amqp.log", "Set path to get log information");
+	flag.StringVar(&logFilePath, "logFilePath", "/var/log/http2amqp/http2amqp.log", "Set path to get log information")
 	flag.StringVar(&configFile, "configFile", "./config.json", "Get config file with arguments")
 }
 
@@ -71,7 +71,7 @@ func main() {
 	parseConfig(&uri, &httpPort, &logFilePath)
 	fmt.Printf("\nParsed params:\n uri=%s\n httpPort=%s\n logFilePath=%s\n", uri, httpPort, logFilePath)
 
-	logFile, err := os.OpenFile(logFilePath, os.O_RDWR | os.O_APPEND | os.O_CREATE, 0666)
+	logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
 		fmt.Printf("Log error: %v\n", err)
 		os.Exit(1)
@@ -85,7 +85,7 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		staticHandler(w, r, lines)
 	})
-	http.ListenAndServe(":" + httpPort, nil) //address= ":8080"
+	http.ListenAndServe(":"+httpPort, nil) //address= ":8080"
 }
 
 func staticHandler(w http.ResponseWriter, req *http.Request, lines chan string) {
@@ -121,11 +121,12 @@ func webReply(result string, w http.ResponseWriter) {
 	log.Printf(statusMessage, w)
 }
 func parseRequest(req *http.Request) string {
-	urlPath := req.URL.Path[strings.LastIndex(req.URL.Path, "/") + 1:] //take everything after the http://localhost:8080/ (it gets the queue name)
+	urlPath := req.URL.Path[strings.LastIndex(req.URL.Path, "/")+1:] //take everything after the http://localhost:8080/ (it gets the queue name)
 	bodyBytes, _ := ioutil.ReadAll(req.Body)
+	queryParams := req.URL.RawQuery
 	body := string(bodyBytes[:])
 	log.Printf("Original=%s, Url path=%s, body=%s\n ", req.URL.Path, urlPath, body)
-	return urlPath + "/" + body //write to rabbitMQ
+	return urlPath + "/" + body + "/" + queryParams //write to rabbitMQ
 }
 
 func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
@@ -162,7 +163,7 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 
 				startTime := time.Now()
 
-				urlPath := strings.SplitN(line, "/", 2) //split into 2 parts- queueName and Message
+				urlPath := strings.SplitN(line, "/", 3) //split into 2 parts- queueName and Message
 				log.Printf("URLpath=%s, line=%s\n ", urlPath, line)
 				if len(urlPath) < 2 {
 					fmt.Fprintf(myWriter, "%v %d %d Skip this message b/c it is missing a QUEUE name on the URL or a message body. count=%d line=%v\n", time.Now(), connectionAttempts, i, len(urlPath), line)
@@ -171,7 +172,7 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 					lines <- "skip"
 					continue
 				}
-				queue, message := urlPath[0], urlPath[1]
+				queue, message, querystring := urlPath[0], urlPath[1], urlPath[2]
 
 				if queueMap[queue] == "" {
 					//if we have never seen this queue name work before
@@ -191,12 +192,12 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 				}
 
 				err3 := channel.Publish(
-					"", //exchange
+					"",    //exchange
 					queue, //routingKey, for some reason we need to put the queue name here
 					false, //mandatory - don't quietly drop messages in case of missing Queue
 					false, //immediate
 					amqp.Publishing{
-						Headers:         amqp.Table{},
+						Headers:         amqp.Table{"query_string": querystring},
 						ContentType:     "text/plain",
 						ContentEncoding: "UTF-8",
 						Body:            []byte(message),
@@ -230,4 +231,3 @@ func writeRabbit(amqpURI string, myWriter *bufio.Writer) chan string {
 	}()
 	return lines
 }
-
