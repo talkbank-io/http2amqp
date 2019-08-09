@@ -1,0 +1,3 @@
+#!/bin/sh
+
+/go/http2amqp -uri "amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@$RABBITMQ_HOST:5672/" -logFilePath "/var/log/http2amqp.log"
